@@ -832,19 +832,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   try {
-    // Check if interaction is still valid (not expired)
-    const interactionAge = Date.now() - interaction.createdTimestamp;
-    if (interactionAge > 14 * 60 * 1000) {
-      console.log(`Interaction expired (${Math.floor(interactionAge / 1000)}s old)`);
-      if (!interaction.replied && !interaction.deferred) {
-        return await interaction.reply({ 
-          content: "This interaction has expired. Please run the command again.", 
-          ephemeral: true 
-        });
-      }
-      return;
-    }
-
     // Defer the reply immediately to prevent timeout
     await interaction.deferUpdate();
 
