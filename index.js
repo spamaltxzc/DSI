@@ -70,7 +70,7 @@ async function readIndexData() {
 
     const results = [];
     fs.createReadStream(csvFilePath)
-      .pipe(csv())
+      .pipe(csv({ headers: ['Date', 'IndexValue'] }))
       .on('data', (data) => results.push(data))
       .on('end', () => {
         const dates = results.map(r => r.Date);
@@ -516,7 +516,7 @@ const width = 1200;
 const height = 600;
 const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour: '#0b1220' });
 
-async function generateServerIndexChart(dates, values, subtitle = '') {
+async function generateServerIndexChart(dates, values, subtitle = '', timeRange = null) {
   const configuration = {
     type: 'line',
     data: {
@@ -574,7 +574,7 @@ async function generateServerIndexChart(dates, values, subtitle = '') {
                   const d = new Date(dates[index]);
                   if (!d || isNaN(d)) return '';
                   // Show hours:minutes for recent ranges, date+time for longer
-                  if (timeRange <= 24 * 60 * 60 * 1000) {
+                  if (timeRange && timeRange <= 24 * 60 * 60 * 1000) {
                     return d.toLocaleTimeString('en-US', {
                       hour: '2-digit',
                       minute: '2-digit'
@@ -640,8 +640,9 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.guildId !== GUILD_ID) return interaction.reply("This command only works in the target server.");
 
   if (interaction.commandName === 'serverindex') {
+    await interaction.deferReply();
     const { dates, values } = await readIndexData();
-    if (!dates.length) return interaction.reply("No index data logged yet.");
+    if (!dates.length) return interaction.editReply("No index data logged yet.");
 
     const image = await generateServerIndexChart(dates, values, 'Use the dropdown to change time range');
     const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
@@ -651,7 +652,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const embed = new EmbedBuilder()
       .setTitle('Server Index')
-      .setDescription('Performance index computed from server activity')
+      .setDescription('Performance index computed from real server activity')
       .setColor('#3b82f6')
       .setImage('attachment://server-index.png')
       .setFooter({ text: `Generated at: ${timeString} UTC` });
@@ -678,7 +679,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-    await interaction.reply({
+    await interaction.editReply({
       embeds: [embed],
       files: [attachment],
       components: [row]
@@ -705,7 +706,7 @@ client.on('interactionCreate', async (interaction) => {
     '1y': 'Last 1 year', '2y': 'Last 2 years', '5y': 'Last 5 years'
   };
 
-  const image = await generateServerIndexChart(d2, v2, labelMap[selected] || selected);
+  const image = await generateServerIndexChart(d2, v2, labelMap[selected] || selected, ranges[selected]);
   const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
 
   const now = new Date();
