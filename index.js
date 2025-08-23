@@ -771,9 +771,8 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.commandName === 'serverindex') {
     try {
-      await interaction.deferReply();
       const { dates, values } = await readIndexData();
-      if (!dates.length) return interaction.editReply("No index data logged yet.");
+      if (!dates.length) return interaction.reply("No index data logged yet.");
 
       const stats = calculateIndexStats(dates, values);
       const statsText = formatIndexStats(stats);
@@ -813,7 +812,7 @@ client.on('interactionCreate', async (interaction) => {
 
       const row = new ActionRowBuilder().addComponents(selectMenu);
 
-      await interaction.editReply({
+      await interaction.reply({
         embeds: [embed],
         files: [attachment],
         components: [row]
