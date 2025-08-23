@@ -520,7 +520,7 @@ function calcGrowth(joins, leaves, maxExpected = 50) {
       data: {
         labels: dates.map(d => new Date(d)), // ensure parsed as Date objects
         datasets: [{
-            label: '📈 Server Index',
+            label: 'Server Index',
             data: values,
             borderColor: '#38bdf8', // cyan-400
             borderWidth: 4,
@@ -694,7 +694,7 @@ function calcGrowth(joins, leaves, maxExpected = 50) {
     if (!dates.length) return interaction.reply({ content: "No data available.", ephemeral: true });
   
     const { dates: d2, values: v2 } = filterData(dates, values, selected);
-    if (!d2.length) return interaction.reply({ content: "⚠️ No data for this range.", ephemeral: true });
+    if (!d2.length) return interaction.reply({ content: "No data for this range.", ephemeral: true });
   
     const labelMap = {
       '30m': 'Last 30 minutes', '1h': 'Last 1 hour', '4h': 'Last 4 hours', '12h': 'Last 12 hours',
