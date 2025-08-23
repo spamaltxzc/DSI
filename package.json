@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "dependencies": {
     "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-node-canvas": "^5.0.0",
