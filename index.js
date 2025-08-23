@@ -770,53 +770,71 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.guildId !== GUILD_ID) return interaction.reply("This command only works in the target server.");
 
   if (interaction.commandName === 'serverindex') {
-    await interaction.deferReply();
-    const { dates, values } = await readIndexData();
-    if (!dates.length) return interaction.editReply("No index data logged yet.");
+    try {
+      await interaction.deferReply();
+      const { dates, values } = await readIndexData();
+      if (!dates.length) return interaction.editReply("No index data logged yet.");
 
-    const stats = calculateIndexStats(dates, values);
-    const statsText = formatIndexStats(stats);
-    
-    const image = await generateServerIndexChart(dates, values, 'Use the dropdown to change time range');
-    const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
+      const stats = calculateIndexStats(dates, values);
+      const statsText = formatIndexStats(stats);
+      
+      const image = await generateServerIndexChart(dates, values, 'Use the dropdown to change time range');
+      const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
 
-    const now = new Date();
-    const timeString = now.toLocaleString('en-US', { timeZone: 'UTC' });
+      const now = new Date();
+      const timeString = now.toLocaleString('en-US', { timeZone: 'UTC' });
 
-    const embed = new EmbedBuilder()
-      .setTitle('Server Index')
-      .setDescription(`${statsText}\n\nPerformance index computed from various server stats`)
-      .setColor('#3b82f6')
-      .setImage('attachment://server-index.png')
-      .setFooter({ text: `Generated at: ${timeString} UTC` });
+      const embed = new EmbedBuilder()
+        .setTitle('Server Index')
+        .setDescription(`${statsText}\n\nPerformance index computed from various server stats`)
+        .setColor('#3b82f6')
+        .setImage('attachment://server-index.png')
+        .setFooter({ text: `Generated at: ${timeString} UTC` });
 
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId('time_range_select')
-      .setPlaceholder('Select time range')
-      .addOptions([
-        { label: 'Last 30 minutes', value: '30m' },
-        { label: 'Last 1 hour', value: '1h' },
-        { label: 'Last 4 hours', value: '4h' },
-        { label: 'Last 12 hours', value: '12h' },
-        { label: 'Last 1 day', value: '1d' },
-        { label: 'Last 3 days', value: '3d' },
-        { label: 'Last 7 days', value: '7d' },
-        { label: 'Last 2 weeks', value: '2w' },
-        { label: 'Last 1 month', value: '1mo' },
-        { label: 'Last 3 months', value: '3mo' },
-        { label: 'Last 6 months', value: '6mo' },
-        { label: 'Last 1 year', value: '1y' },
-        { label: 'Last 2 years', value: '2y' },
-        { label: 'Last 5 years', value: '5y' },
-      ]);
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('time_range_select')
+        .setPlaceholder('Select time range')
+        .addOptions([
+          { label: 'Last 30 minutes', value: '30m' },
+          { label: 'Last 1 hour', value: '1h' },
+          { label: 'Last 4 hours', value: '4h' },
+          { label: 'Last 12 hours', value: '12h' },
+          { label: 'Last 1 day', value: '1d' },
+          { label: 'Last 3 days', value: '3d' },
+          { label: 'Last 7 days', value: '7d' },
+          { label: 'Last 2 weeks', value: '2w' },
+          { label: 'Last 1 month', value: '1mo' },
+          { label: 'Last 3 months', value: '3mo' },
+          { label: 'Last 6 months', value: '6mo' },
+          { label: 'Last 1 year', value: '1y' },
+          { label: 'Last 2 years', value: '2y' },
+          { label: 'Last 5 years', value: '5y' },
+        ]);
 
-    const row = new ActionRowBuilder().addComponents(selectMenu);
+      const row = new ActionRowBuilder().addComponents(selectMenu);
 
-    await interaction.editReply({
-      embeds: [embed],
-      files: [attachment],
-      components: [row]
-    });
+      await interaction.editReply({
+        embeds: [embed],
+        files: [attachment],
+        components: [row]
+      });
+    } catch (error) {
+      console.error('Slash command error:', error);
+      if (error.code === 10062) {
+        console.log('Interaction expired during slash command');
+        return;
+      }
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "An error occurred. Please try again.", ephemeral: true });
+        } else {
+          await interaction.editReply("An error occurred while generating the chart.");
+        }
+      } catch (replyError) {
+        console.error('Failed to send error response:', replyError);
+      }
+      return;
+    }
   }
 });
 
