@@ -511,6 +511,58 @@ async function pollKicks(guild) {
   }
 }
 
+// ===== Index Stats Helper =====
+function calculateIndexStats(dates, values) {
+  if (!dates.length || !values.length) return null;
+  
+  const currentIndex = values[values.length - 1];
+  
+  // Find index from 24 hours ago
+  const now = Date.now();
+  const oneDayAgo = now - (24 * 60 * 60 * 1000);
+  
+  let previousIndex = null;
+  let percentChange = null;
+  let trend = null;
+  
+  // Find the closest index value from ~24 hours ago
+  for (let i = dates.length - 1; i >= 0; i--) {
+    const dateTs = new Date(dates[i]).getTime();
+    if (dateTs <= oneDayAgo) {
+      previousIndex = values[i];
+      break;
+    }
+  }
+  
+  if (previousIndex !== null && previousIndex > 0) {
+    percentChange = ((currentIndex - previousIndex) / previousIndex) * 100;
+    trend = percentChange > 0 ? 'up' : percentChange < 0 ? 'down' : 'stable';
+  }
+  
+  return {
+    current: currentIndex,
+    previous: previousIndex,
+    percentChange,
+    trend
+  };
+}
+
+function formatIndexStats(stats) {
+  if (!stats) return 'Current Index: N/A';
+  
+  let description = `**Current Index:** ${stats.current}/1000`;
+  
+  if (stats.percentChange !== null) {
+    const absChange = Math.abs(stats.percentChange);
+    const emoji = stats.trend === 'up' ? '📈' : stats.trend === 'down' ? '📉' : '➡️';
+    const sign = stats.percentChange > 0 ? '+' : '';
+    
+    description += ` ${emoji} ${sign}${stats.percentChange.toFixed(1)}% (24h)`;
+  }
+  
+  return description;
+}
+
 // ===== Chart Generator (Fancy) =====
 const width = 1200;
 const height = 600;
@@ -722,6 +774,9 @@ client.on('interactionCreate', async (interaction) => {
     const { dates, values } = await readIndexData();
     if (!dates.length) return interaction.editReply("No index data logged yet.");
 
+    const stats = calculateIndexStats(dates, values);
+    const statsText = formatIndexStats(stats);
+    
     const image = await generateServerIndexChart(dates, values, 'Use the dropdown to change time range');
     const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
 
@@ -730,7 +785,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const embed = new EmbedBuilder()
       .setTitle('Server Index')
-      .setDescription('Performance index computed from real server activity')
+      .setDescription(`${statsText}\n\nPerformance index computed from various server stats`)
       .setColor('#3b82f6')
       .setImage('attachment://server-index.png')
       .setFooter({ text: `Generated at: ${timeString} UTC` });
@@ -770,18 +825,50 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (interaction.customId !== 'time_range_select') return;
 
+  // Check if interaction has already been replied to or deferred
+  if (interaction.replied || interaction.deferred) {
+    console.log('Interaction already handled, skipping');
+    return;
+  }
+
   try {
     // Check if interaction is still valid (not expired)
-    if (Date.now() - interaction.createdTimestamp > 14 * 60 * 1000) {
-      return interaction.reply({ content: "This interaction has expired. Please run the command again.", ephemeral: true });
+    const interactionAge = Date.now() - interaction.createdTimestamp;
+    if (interactionAge > 14 * 60 * 1000) {
+      console.log(`Interaction expired (${Math.floor(interactionAge / 1000)}s old)`);
+      if (!interaction.replied && !interaction.deferred) {
+        return await interaction.reply({ 
+          content: "This interaction has expired. Please run the command again.", 
+          ephemeral: true 
+        });
+      }
+      return;
     }
+
+    // Defer the reply immediately to prevent timeout
+    await interaction.deferUpdate();
 
     const selected = interaction.values[0];
     const { dates, values } = await readIndexData();
-    if (!dates.length) return interaction.reply({ content: "No data available.", ephemeral: true });
+    
+    if (!dates.length) {
+      return await interaction.editReply({ 
+        content: "No data available.", 
+        embeds: [], 
+        files: [], 
+        components: [] 
+      });
+    }
 
     const { dates: d2, values: v2 } = filterData(dates, values, selected);
-    if (!d2.length) return interaction.reply({ content: "No data for this time range.", ephemeral: true });
+    if (!d2.length) {
+      return await interaction.editReply({ 
+        content: "No data for this time range.", 
+        embeds: [], 
+        files: [], 
+        components: [] 
+      });
+    }
 
     const labelMap = {
       '30m': 'Last 30 minutes', '1h': 'Last 1 hour', '4h': 'Last 4 hours', '12h': 'Last 12 hours',
@@ -789,6 +876,10 @@ client.on('interactionCreate', async (interaction) => {
       '1mo': 'Last 1 month', '3mo': 'Last 3 months', '6mo': 'Last 6 months',
       '1y': 'Last 1 year', '2y': 'Last 2 years', '5y': 'Last 5 years'
     };
+
+    // Calculate stats for the filtered data, but use original data for 24h comparison
+    const stats = calculateIndexStats(dates, values);
+    const statsText = formatIndexStats(stats);
 
     const image = await generateServerIndexChart(d2, v2, labelMap[selected] || selected, ranges[selected]);
     const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
@@ -798,23 +889,43 @@ client.on('interactionCreate', async (interaction) => {
 
     const embed = new EmbedBuilder()
       .setTitle(`Server Index`)
-      .setDescription(`Performance index • ${labelMap[selected] || selected}`)
+      .setDescription(`${statsText}\n\nPerformance index • ${labelMap[selected] || selected}`)
       .setColor('#3b82f6')
       .setImage('attachment://server-index.png')
       .setFooter({ text: `Generated at: ${timeString} UTC` });
 
-    await interaction.update({
+    await interaction.editReply({
       embeds: [embed],
       files: [attachment],
       components: [interaction.message.components[0]]
     });
+    
   } catch (error) {
     console.error('Interaction update error:', error);
-    // If update fails, try replying instead (for expired interactions)
+    
+    // Handle different error scenarios
+    if (error.code === 10062) {
+      console.log('Unknown interaction error - interaction may have expired');
+      return; // Don't try to respond to expired interactions
+    }
+    
+    // Try to respond with error message if we haven't responded yet
     try {
-      await interaction.reply({ content: "An error occurred. Please run the command again.", ephemeral: true });
-    } catch (replyError) {
-      console.error('Failed to reply to interaction:', replyError);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ 
+          content: "An error occurred while updating the chart. Please try again.", 
+          ephemeral: true 
+        });
+      } else if (interaction.deferred) {
+        await interaction.editReply({ 
+          content: "An error occurred while generating the chart. Please try again.",
+          embeds: [],
+          files: [],
+          components: []
+        });
+      }
+    } catch (responseError) {
+      console.error('Failed to send error response:', responseError);
     }
   }
 });
