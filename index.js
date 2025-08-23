@@ -2,7 +2,7 @@
 // Discord Server Index Bot — Full Implementation with 11 Factors
 
 // ===== Imports =====
-const {
+import {
   Client,
   GatewayIntentBits,
   Partials,
@@ -13,15 +13,17 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   AuditLogEvent
-} = require('discord.js');
-const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const csv = require('csv-parser');
-const fs = require('fs');
-const cron = require('node-cron');
-require('dotenv').config();
-const Chart = require('chart.js/auto');
+} from 'discord.js';
+import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
+import { createObjectCsvWriter } from 'csv-writer';
+import csv from 'csv-parser';
+import fs from 'fs';
+import cron from 'node-cron';
+import dotenv from 'dotenv';
+import Chart from 'chart.js/auto';
 import express from 'express';
+
+dotenv.config();
 
 
 
@@ -48,7 +50,7 @@ const client = new Client({
 });
 
 // ===== CSV Writer/Reader =====
-const csvWriter = createCsvWriter({
+const csvWriter = createObjectCsvWriter({
   path: csvFilePath,
   header: [
     { id: 'date',  title: 'Date' },
