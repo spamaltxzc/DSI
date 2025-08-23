@@ -651,7 +651,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const embed = new EmbedBuilder()
       .setTitle('Server Index')
-      .setDescription('Performance index computed from real server activity')
+      .setDescription('Performance index computed from server activity')
       .setColor('#3b82f6')
       .setImage('attachment://server-index.png')
       .setFooter({ text: `Generated at: ${timeString} UTC` });
