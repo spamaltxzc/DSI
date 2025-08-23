@@ -570,18 +570,57 @@ async function generateServerIndexChart(dates, values, subtitle = '', timeRange 
               ticks: {
                 color: '#ffffff',
                 font: { size: 14, weight: 'bold' },
+                maxTicksLimit: 8,
                 callback: (val, index) => {
                   const d = new Date(dates[index]);
                   if (!d || isNaN(d)) return '';
-                  // Show hours:minutes for recent ranges, date+time for longer
-                  if (timeRange && timeRange <= 24 * 60 * 60 * 1000) {
-                    return d.toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    });
-                  } else {
-                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  
+                  // Adaptive labeling based on time range
+                  if (timeRange) {
+                    const hours = timeRange / (60 * 60 * 1000);
+                    const days = timeRange / (24 * 60 * 60 * 1000);
+                    const months = timeRange / (30 * 24 * 60 * 60 * 1000);
+                    
+                    if (hours <= 2) { // 30m, 1h, 2h
+                      return d.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      });
+                    } else if (hours <= 24) { // 4h, 12h, 1d
+                      return d.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      });
+                    } else if (days <= 7) { // 3d, 7d
+                      return d.toLocaleDateString('en-US', { 
+                        weekday: 'short',
+                        hour: '2-digit'
+                      });
+                    } else if (days <= 30) { // 2w, 1mo
+                      return d.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric'
+                      });
+                    } else if (months <= 6) { // 3mo, 6mo
+                      return d.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric'
+                      });
+                    } else if (months <= 12) { // 1y
+                      return d.toLocaleDateString('en-US', { 
+                        month: 'short',
+                        year: '2-digit'
+                      });
+                    } else { // 2y, 5y
+                      return d.toLocaleDateString('en-US', { 
+                        month: 'short',
+                        year: 'numeric'
+                      });
+                    }
                   }
+                  
+                  // Default fallback
+                  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 }
               },
               grid: { color: 'rgba(148,163,184,0.15)' }
@@ -624,14 +663,53 @@ function filterData(dates, values, rangeKey) {
   const cutoff = Date.now() - ranges[rangeKey];
   const outD = [];
   const outV = [];
+  
+  // Create a map to deduplicate entries that are very close in time
+  const dataMap = new Map();
+  
+  // Determine aggregation window based on range
+  const rangeMs = ranges[rangeKey];
+  let aggregationWindow;
+  
+  if (rangeMs <= 2 * 60 * 60 * 1000) { // <= 2 hours: keep per minute
+    aggregationWindow = 60 * 1000;
+  } else if (rangeMs <= 24 * 60 * 60 * 1000) { // <= 1 day: keep per 5 minutes
+    aggregationWindow = 5 * 60 * 1000;
+  } else if (rangeMs <= 7 * 24 * 60 * 60 * 1000) { // <= 1 week: keep per hour
+    aggregationWindow = 60 * 60 * 1000;
+  } else if (rangeMs <= 30 * 24 * 60 * 60 * 1000) { // <= 1 month: keep per 6 hours
+    aggregationWindow = 6 * 60 * 60 * 1000;
+  } else if (rangeMs <= 365 * 24 * 60 * 60 * 1000) { // <= 1 year: keep per day
+    aggregationWindow = 24 * 60 * 60 * 1000;
+  } else { // > 1 year: keep per week
+    aggregationWindow = 7 * 24 * 60 * 60 * 1000;
+  }
+  
   for (let i = 0; i < dates.length; i++) {
     const ts = new Date(dates[i]).getTime();
     if (ts >= cutoff) {
-      outD.push(dates[i]);
-      outV.push(values[i]);
+      // Round to aggregation window for deduplication
+      const roundedTs = Math.floor(ts / aggregationWindow) * aggregationWindow;
+      // Keep the latest value for each window
+      if (!dataMap.has(roundedTs) || ts > dataMap.get(roundedTs).originalTs) {
+        dataMap.set(roundedTs, { 
+          date: dates[i], 
+          value: values[i], 
+          originalTs: ts 
+        });
+      }
     }
   }
-  return { dates: outD, values: outV };
+  
+  // Convert back to arrays, sorted by timestamp
+  const sortedEntries = Array.from(dataMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([_, data]) => data);
+    
+  return { 
+    dates: sortedEntries.map(d => d.date), 
+    values: sortedEntries.map(d => d.value) 
+  };
 }
 
 // ===== Slash Command =====
@@ -692,38 +770,53 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (interaction.customId !== 'time_range_select') return;
 
-  const selected = interaction.values[0];
-  const { dates, values } = await readIndexData();
-  if (!dates.length) return interaction.reply({ content: "No data available.", ephemeral: true });
+  try {
+    // Check if interaction is still valid (not expired)
+    if (Date.now() - interaction.createdTimestamp > 14 * 60 * 1000) {
+      return interaction.reply({ content: "This interaction has expired. Please run the command again.", ephemeral: true });
+    }
 
-  const { dates: d2, values: v2 } = filterData(dates, values, selected);
-  if (!d2.length) return interaction.reply({ content: "No data for this range.", ephemeral: true });
+    const selected = interaction.values[0];
+    const { dates, values } = await readIndexData();
+    if (!dates.length) return interaction.reply({ content: "No data available.", ephemeral: true });
 
-  const labelMap = {
-    '30m': 'Last 30 minutes', '1h': 'Last 1 hour', '4h': 'Last 4 hours', '12h': 'Last 12 hours',
-    '1d': 'Last 1 day', '3d': 'Last 3 days', '7d': 'Last 7 days', '2w': 'Last 2 weeks',
-    '1mo': 'Last 1 month', '3mo': 'Last 3 months', '6mo': 'Last 6 months',
-    '1y': 'Last 1 year', '2y': 'Last 2 years', '5y': 'Last 5 years'
-  };
+    const { dates: d2, values: v2 } = filterData(dates, values, selected);
+    if (!d2.length) return interaction.reply({ content: "No data for this time range.", ephemeral: true });
 
-  const image = await generateServerIndexChart(d2, v2, labelMap[selected] || selected, ranges[selected]);
-  const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
+    const labelMap = {
+      '30m': 'Last 30 minutes', '1h': 'Last 1 hour', '4h': 'Last 4 hours', '12h': 'Last 12 hours',
+      '1d': 'Last 1 day', '3d': 'Last 3 days', '7d': 'Last 7 days', '2w': 'Last 2 weeks',
+      '1mo': 'Last 1 month', '3mo': 'Last 3 months', '6mo': 'Last 6 months',
+      '1y': 'Last 1 year', '2y': 'Last 2 years', '5y': 'Last 5 years'
+    };
 
-  const now = new Date();
-  const timeString = now.toLocaleString('en-US', { timeZone: 'UTC' });
+    const image = await generateServerIndexChart(d2, v2, labelMap[selected] || selected, ranges[selected]);
+    const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
 
-  const embed = new EmbedBuilder()
-    .setTitle(`Server Index`)
-    .setDescription(`Performance index • ${labelMap[selected] || selected}`)
-    .setColor('#3b82f6')
-    .setImage('attachment://server-index.png')
-    .setFooter({ text: `Generated at: ${timeString} UTC` });
+    const now = new Date();
+    const timeString = now.toLocaleString('en-US', { timeZone: 'UTC' });
 
-  await interaction.update({
-    embeds: [embed],
-    files: [attachment],
-    components: [interaction.message.components[0]]
-  });
+    const embed = new EmbedBuilder()
+      .setTitle(`Server Index`)
+      .setDescription(`Performance index • ${labelMap[selected] || selected}`)
+      .setColor('#3b82f6')
+      .setImage('attachment://server-index.png')
+      .setFooter({ text: `Generated at: ${timeString} UTC` });
+
+    await interaction.update({
+      embeds: [embed],
+      files: [attachment],
+      components: [interaction.message.components[0]]
+    });
+  } catch (error) {
+    console.error('Interaction update error:', error);
+    // If update fails, try replying instead (for expired interactions)
+    try {
+      await interaction.reply({ content: "An error occurred. Please run the command again.", ephemeral: true });
+    } catch (replyError) {
+      console.error('Failed to reply to interaction:', replyError);
+    }
+  }
 });
 
 // ===== Command Registration =====
