@@ -889,7 +889,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.update({
       embeds: [embed],
       files: [attachment],
-      components: [interaction.message.components]
+      components: interaction.message.components
     });
 
     
