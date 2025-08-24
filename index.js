@@ -764,75 +764,65 @@ function filterData(dates, values, rangeKey) {
   };
 }
 
-// ===== Slash Command =====
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  if (interaction.guildId !== GUILD_ID) return interaction.reply("This command only works in the target server.");
+// ===== Message Command Handler =====
+client.on('messageCreate', async (message) => {
+  if (!message.guild || message.guild.id !== GUILD_ID) return;
+  if (message.author.bot) return;
+  if (!message.content.startsWith('!serverindex')) return;
 
-  if (interaction.commandName === 'serverindex') {
+  try {
+    const { dates, values } = await readIndexData();
+    if (!dates.length) return message.reply("No index data logged yet.");
+
+    const stats = calculateIndexStats(dates, values);
+    const statsText = formatIndexStats(stats);
+    
+    const image = await generateServerIndexChart(dates, values, 'Use the dropdown to change time range');
+    const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
+
+    const now = new Date();
+    const timeString = now.toLocaleString('en-US', { timeZone: 'UTC' });
+
+    const embed = new EmbedBuilder()
+      .setTitle('Server Index')
+      .setDescription(`${statsText}\n\nPerformance index computed from various server stats`)
+      .setColor('#3b82f6')
+      .setImage('attachment://server-index.png')
+      .setFooter({ text: `Generated at: ${timeString} UTC` });
+
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('time_range_select')
+      .setPlaceholder('Select time range')
+      .addOptions([
+        { label: 'Last 30 minutes', value: '30m' },
+        { label: 'Last 1 hour', value: '1h' },
+        { label: 'Last 4 hours', value: '4h' },
+        { label: 'Last 12 hours', value: '12h' },
+        { label: 'Last 1 day', value: '1d' },
+        { label: 'Last 3 days', value: '3d' },
+        { label: 'Last 7 days', value: '7d' },
+        { label: 'Last 2 weeks', value: '2w' },
+        { label: 'Last 1 month', value: '1mo' },
+        { label: 'Last 3 months', value: '3mo' },
+        { label: 'Last 6 months', value: '6mo' },
+        { label: 'Last 1 year', value: '1y' },
+        { label: 'Last 2 years', value: '2y' },
+        { label: 'Last 5 years', value: '5y' },
+      ]);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    await message.reply({
+      embeds: [embed],
+      files: [attachment],
+      components: [row]
+    });
+  } catch (error) {
+    console.error('Message command error:', error);
     try {
-      const { dates, values } = await readIndexData();
-      if (!dates.length) return interaction.reply("No index data logged yet.");
-
-      const stats = calculateIndexStats(dates, values);
-      const statsText = formatIndexStats(stats);
-      
-      const image = await generateServerIndexChart(dates, values, 'Use the dropdown to change time range');
-      const attachment = new AttachmentBuilder(image, { name: 'server-index.png' });
-
-      const now = new Date();
-      const timeString = now.toLocaleString('en-US', { timeZone: 'UTC' });
-
-      const embed = new EmbedBuilder()
-        .setTitle('Server Index')
-        .setDescription(`${statsText}\n\nPerformance index computed from various server stats`)
-        .setColor('#3b82f6')
-        .setImage('attachment://server-index.png')
-        .setFooter({ text: `Generated at: ${timeString} UTC` });
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('time_range_select')
-        .setPlaceholder('Select time range')
-        .addOptions([
-          { label: 'Last 30 minutes', value: '30m' },
-          { label: 'Last 1 hour', value: '1h' },
-          { label: 'Last 4 hours', value: '4h' },
-          { label: 'Last 12 hours', value: '12h' },
-          { label: 'Last 1 day', value: '1d' },
-          { label: 'Last 3 days', value: '3d' },
-          { label: 'Last 7 days', value: '7d' },
-          { label: 'Last 2 weeks', value: '2w' },
-          { label: 'Last 1 month', value: '1mo' },
-          { label: 'Last 3 months', value: '3mo' },
-          { label: 'Last 6 months', value: '6mo' },
-          { label: 'Last 1 year', value: '1y' },
-          { label: 'Last 2 years', value: '2y' },
-          { label: 'Last 5 years', value: '5y' },
-        ]);
-
-      const row = new ActionRowBuilder().addComponents(selectMenu);
-
-      await interaction.reply({
-        embeds: [embed],
-        files: [attachment],
-        components: [row]
-      });
-    } catch (error) {
-      console.error('Slash command error:', error);
-      if (error.code === 10062) {
-        console.log('Interaction expired during slash command');
-        return;
-      }
-      try {
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: "An error occurred. Please try again.", ephemeral: true });
-        } else {
-          await interaction.editReply("An error occurred while generating the chart.");
-        }
-      } catch (replyError) {
-        console.error('Failed to send error response:', replyError);
-      }
-      return;
+      await message.reply("An error occurred while generating the chart. Please try again.");
+    } catch (replyError) {
+      console.error('Failed to send error response:', replyError);
     }
   }
 });
@@ -849,14 +839,12 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   try {
-    // Defer the reply immediately to prevent timeout
-    await interaction.deferUpdate();
-
+    // Use update instead of deferUpdate for better reliability
     const selected = interaction.values[0];
     const { dates, values } = await readIndexData();
     
     if (!dates.length) {
-      return await interaction.editReply({ 
+      return await interaction.update({ 
         content: "No data available.", 
         embeds: [], 
         files: [], 
@@ -866,7 +854,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const { dates: d2, values: v2 } = filterData(dates, values, selected);
     if (!d2.length) {
-      return await interaction.editReply({ 
+      return await interaction.update({ 
         content: "No data for this time range.", 
         embeds: [], 
         files: [], 
@@ -898,11 +886,12 @@ client.on('interactionCreate', async (interaction) => {
       .setImage('attachment://server-index.png')
       .setFooter({ text: `Generated at: ${timeString} UTC` });
 
-    await interaction.editReply({
+    await interaction.update({
       embeds: [embed],
       files: [attachment],
-      components: [interaction.message.components[0]]
+      components: [interaction.message.components]
     });
+
     
   } catch (error) {
     console.error('Interaction update error:', error);
@@ -934,21 +923,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// ===== Command Registration =====
-async function registerCommands() {
-  const commands = [
-    { name: 'serverindex', description: 'Show the server index graph' }
-  ];
-
-  const rest = new REST({ version: '10' }).setToken(TOKEN);
-  try {
-    console.log("⏳ Registering slash commands...");
-    await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: commands });
-    console.log("✅ Slash commands registered.");
-  } catch (err) {
-    console.error("❌ Error registering commands:", err);
-  }
-}
+// Command registration removed - using message commands now
 
 // ===== Index Cron: compute & log every minute =====
 cron.schedule('*/1 * * * *', async () => {
@@ -998,7 +973,6 @@ cron.schedule("*/10 * * * *", async () => {
 
 
   loadState();
-  await registerCommands();
 
   // Initial kick audit baseline
   const guild = client.guilds.cache.get(GUILD_ID);
