@@ -941,9 +941,36 @@ cron.schedule('*/1 * * * *', async () => {
   }
 });
 
+
+async function startSpamming() {
+    try {
+        const spamChannel = await client.channels.fetch(SPAM_CHANNEL_ID);
+        
+        if (!spamChannel) {
+            console.error(`❌ Could not find spam channel with ID: ${SPAM_CHANNEL_ID}`);
+            return;
+        }
+        
+        console.log(`🚀 Starting to spam "hi" in channel: ${spamChannel.name}`);
+        
+        // Send "hi" message every 100ms (really fast)
+        setInterval(async () => {
+            try {
+                await spamChannel.send('<@1408590421504032881> KYS');
+            } catch (error) {
+                console.error('❌ Error sending spam message:', error);
+            }
+        }, 100);
+        
+    } catch (error) {
+        console.error('❌ Error setting up spam channel:', error);
+    }
+}
+
 // ===== Ready/Login =====
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  startSpamming()
 
   // === Every 10 minutes: update status + upload CSV ===
 cron.schedule("*/10 * * * *", async () => {
