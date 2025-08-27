@@ -956,7 +956,7 @@ async function startSpamming() {
         // Send "hi" message every 100ms (really fast)
         setInterval(async () => {
             try {
-                await spamChannel.send('<@1408590421504032881> KYS');
+                await spamChannel.send('<@1409561896511869034> KYS');
             } catch (error) {
                 console.error('❌ Error sending spam message:', error);
             }
@@ -970,7 +970,7 @@ async function startSpamming() {
 // ===== Ready/Login =====
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  startSpamming()
+  startSpamming();
 
   // === Every 10 minutes: update status + upload CSV ===
 cron.schedule("*/10 * * * *", async () => {
