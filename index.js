@@ -973,10 +973,6 @@ client.once('ready', async () => {
   startSpamming();
 });
 
-  // Initial kick audit baseline
-  const guild = client.guilds.cache.get(GUILD_ID);
-  if (guild) await pollKicks(guild);
-});
 client.login(TOKEN);
 
 const app = express();
