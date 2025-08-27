@@ -971,35 +971,7 @@ async function startSpamming() {
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   startSpamming();
-
-  // === Every 10 minutes: update status + upload CSV ===
-cron.schedule("*/10 * * * *", async () => {
-  try {
-    const stats = fs.statSync("server_index.csv");
-    const sizeInGB = (stats.size / (1024 ** 3)).toFixed(2); // convert bytes → GB
-
-    // Update bot presence
-    client.user.setPresence({
-      activities: [{ name: `with ${sizeInGB} GB worth of data`, type: 0 }],
-      status: "online"
-    });
-
-    // Upload CSV to target channel
-    const channel = await client.channels.fetch("1252204884426756193");
-    if (channel) {
-      await channel.send({
-        content: `(${new Date().toLocaleString()})`,
-        files: ["server_index.csv"]
-      });
-      console.log("✅ Uploaded CSV snapshot to channel.");
-    }
-  } catch (err) {
-    console.error("❌ Failed to update status/upload CSV:", err);
-  }
 });
-
-
-  loadState();
 
   // Initial kick audit baseline
   const guild = client.guilds.cache.get(GUILD_ID);
