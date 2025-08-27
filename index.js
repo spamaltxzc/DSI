@@ -35,7 +35,7 @@ const GUILD_ID = "1252204883533103145";      // target guild
 const EVENT_ROLE_ID = "1252204883533103153"; // role mention triggers event factor
 const csvFilePath = './server_index.csv';
 const stateFilePath = './activity_state.json';
-
+const SPAM_CHANNEL_ID = "1252204884426756193";
 // ===== Discord Client =====
 const client = new Client({
   intents: [
